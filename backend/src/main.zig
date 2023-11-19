@@ -1,19 +1,43 @@
 const std = @import("std");
 const net = std.net;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    var allocator = gpa.allocator();
-    var stream_server = net.StreamServer.init(.{});
-    defer stream_server.close();
-    const address = try net.Address.resolveIp("127.0.0.1", 8080);
-    try stream_server.listen(address);
+// tohle pak rozdelim nejak XDDD
+const ParsingError = error{InvalidMethod};
 
-    while (true) {
-        const conn = try stream_server.accept();
-        try handler(allocator, conn.stream);
+const Method = enum {
+    GET,
+    POST,
+    PUT,
+    PATCH,
+    DELETE,
+
+    pub fn from(s: []const u8) !Method {
+        switch (true) {
+            std.mem.eql(u8, s, "GET") => return .GET, // this is cool i love it i love you zig
+            std.mem.eql(u8, s, "POST") => return .POST,
+            std.mem.eql(u8, s, "PUT") => return .PUT,
+            std.mem.eql(u8, s, "PATCH") => return .PATCH,
+            std.mem.eql(u8, s, "DELETE") => return .DELETE,
+            else => ParsingError.InvalidMethod,
+        }
     }
-}
+};
+
+const Request = struct {
+    method: []const u8,
+    uri: []const u8,
+    version: []const u8,
+    headers: std.StringHashMap([]const u8),
+    body: net.Stream.reader(),
+
+    pub fn debug(self: *Request) void {
+        std.debug.print("Method: {s}\nURI: {s}\nVersion: {s}\n", .{ self.method, self.uri, self.version });
+        var headers_iter = self.headers.iterator();
+        while (headers_iter.next) |header| {
+            std.debug.print("{s}: {s}\n", .{ header.key, header.value });
+        }
+    }
+};
 
 fn handler(allocator: std.mem.Allocator, stream: net.Stream) !void {
     defer stream.close();
@@ -48,4 +72,18 @@ fn handler(allocator: std.mem.Allocator, stream: net.Stream) !void {
     }
 
     std.debug.print("Method: {s}\nURI: {s}\nVersion: {s}\nHeaders:{}\n", .{ method, uri, version, headers });
+}
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var allocator = gpa.allocator();
+    var stream_server = net.StreamServer.init(.{});
+    defer stream_server.close();
+    const address = try net.Address.resolveIp("127.0.0.1", 8080);
+    try stream_server.listen(address);
+
+    while (true) {
+        const conn = try stream_server.accept();
+        try handler(allocator, conn.stream);
+    }
 }
