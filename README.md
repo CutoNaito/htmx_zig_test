@@ -1,5 +1,5 @@
 # HTMX + Zig test
-*Current state:* This project is very WIP, respectively, nothing rly works lol.
+**Current state:** This project is very WIP, respectively, nothing rly works lol.
 
 ### Purpose:
 Making this with the purpose of learn and practice in:
