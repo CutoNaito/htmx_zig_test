@@ -7,6 +7,8 @@ pub fn handler(allocator: std.mem.Allocator, stream: net.Stream) !void {
 
     var context = try rq.Context.init(allocator, stream);
     context.debug();
+
+    try context.response(rq.Status.OK, null, "Hello, World!");
 }
 
 pub fn main() !void {
