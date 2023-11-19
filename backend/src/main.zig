@@ -12,66 +12,83 @@ const Method = enum {
     DELETE,
 
     pub fn from(s: []const u8) !Method {
-        switch (true) {
-            std.mem.eql(u8, s, "GET") => return .GET, // this is cool i love it i love you zig
-            std.mem.eql(u8, s, "POST") => return .POST,
-            std.mem.eql(u8, s, "PUT") => return .PUT,
-            std.mem.eql(u8, s, "PATCH") => return .PATCH,
-            std.mem.eql(u8, s, "DELETE") => return .DELETE,
-            else => ParsingError.InvalidMethod,
-        }
+        if (std.mem.eql(u8, s, "GET")) return .GET;
+        if (std.mem.eql(u8, s, "POST")) return .POST;
+        if (std.mem.eql(u8, s, "PUT")) return .PUT;
+        if (std.mem.eql(u8, s, "PATCH")) return .PATCH;
+        if (std.mem.eql(u8, s, "DELETE")) return .DELETE;
+        return ParsingError.InvalidMethod;
     }
 };
 
-const Request = struct {
-    method: []const u8,
+const Context = struct {
+    method: Method,
     uri: []const u8,
     version: []const u8,
     headers: std.StringHashMap([]const u8),
-    body: net.Stream.reader(),
+    stream: net.Stream,
 
-    pub fn debug(self: *Request) void {
-        std.debug.print("Method: {s}\nURI: {s}\nVersion: {s}\n", .{ self.method, self.uri, self.version });
+    pub fn body(self: *Context) net.Stream.Reader {
+        return self.stream.reader();
+    }
+
+    pub fn response(self: *Context) net.Stream.Writer {
+        return self.stream.writer();
+    }
+
+    pub fn debug(self: *Context) void {
+        std.debug.print("Method: {}\nURI: {s}\nVersion: {s}\n", .{ self.method, self.uri, self.version });
         var headers_iter = self.headers.iterator();
-        while (headers_iter.next) |header| {
-            std.debug.print("{s}: {s}\n", .{ header.key, header.value });
+        while (headers_iter.next()) |header| {
+            std.debug.print("{s}: {s}\n", .{ header.key_ptr.*, header.value_ptr.* });
         }
+    }
+
+    pub fn init(allocator: std.mem.Allocator, stream: net.Stream) !Context {
+        // method, uri, ver etc etc
+        var line = try stream.reader().readUntilDelimiterAlloc(allocator, '\n', std.math.maxInt(usize));
+        line = line[0..line.len];
+        var line_iter = std.mem.split(u8, line, " ");
+
+        const method = line_iter.next().?;
+        const uri = line_iter.next().?;
+        const version = line_iter.next().?;
+
+        var headers = std.StringHashMap([]const u8).init(allocator);
+
+        // headers
+        while (true) {
+            var next_line = try stream.reader().readUntilDelimiterAlloc(allocator, '\n', std.math.maxInt(usize));
+            next_line = next_line[0..next_line.len];
+
+            if (next_line.len == 1 and next_line[0] == '\r')
+                break;
+
+            var next_line_iter = std.mem.split(u8, next_line, ":");
+            const key = next_line_iter.next().?;
+            var value = next_line_iter.next().?;
+
+            if (value[0] == ' ')
+                value = value[1..];
+
+            try headers.put(key, value);
+        }
+
+        return Context{
+            .method = try Method.from(method),
+            .uri = uri,
+            .version = version,
+            .headers = headers,
+            .stream = stream,
+        };
     }
 };
 
-fn handler(allocator: std.mem.Allocator, stream: net.Stream) !void {
+pub fn handler(allocator: std.mem.Allocator, stream: net.Stream) !void {
     defer stream.close();
 
-    // method, uri, ver etc etc
-    var line = try stream.reader().readUntilDelimiterAlloc(allocator, '\n', std.math.maxInt(usize));
-    line = line[0..line.len];
-    var line_iter = std.mem.split(u8, line, " ");
-
-    const method = line_iter.next().?;
-    const uri = line_iter.next().?;
-    const version = line_iter.next().?;
-
-    var headers = std.StringHashMap([]const u8).init(allocator);
-
-    // headers
-    while (true) {
-        var next_line = try stream.reader().readUntilDelimiterAlloc(allocator, '\n', std.math.maxInt(usize));
-        next_line = next_line[0..next_line.len];
-
-        if (next_line.len == 1 and next_line[0] == '\r')
-            break;
-
-        var next_line_iter = std.mem.split(u8, next_line, ":");
-        const key = next_line_iter.next().?;
-        var value = next_line_iter.next().?;
-
-        if (value[0] == ' ')
-            value = value[1..];
-
-        try headers.put(key, value);
-    }
-
-    std.debug.print("Method: {s}\nURI: {s}\nVersion: {s}\nHeaders:{}\n", .{ method, uri, version, headers });
+    var context = try Context.init(allocator, stream);
+    context.debug();
 }
 
 pub fn main() !void {
