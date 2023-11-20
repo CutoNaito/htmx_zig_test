@@ -1,0 +1,10 @@
+.{
+    .name = "htmx-zig-test",
+    .version = "0.1.0",
+    .dependencies = .{
+        .zigcoro = .{
+            .url = "https://api.github.com/repos/rsepassi/zigcoro/tarball/v0.5.0",
+            .hash = "1220ff5ad2a9980015a284f5baa83aa0624a4cd2f9e427bc873872c9d699b00042bb",
+        },
+    },
+}
