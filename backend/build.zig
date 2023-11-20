@@ -11,6 +11,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    exe.linkLibC();
+
     const libcoro = b.dependency("zigcoro", .{}).module("libcoro");
     exe.addModule("libcoro", libcoro);
 

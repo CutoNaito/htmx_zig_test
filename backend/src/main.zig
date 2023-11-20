@@ -12,9 +12,10 @@ fn handler(allocator: std.mem.Allocator, stream: net.Stream) !void {
     try context.response(rq.Status.OK, null, "Hello, World!");
 }
 
+const Connection = struct { frame: libcoro.FrameT(handler, .{}) };
+
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    var allocator = gpa.allocator();
+    var allocator = std.heap.c_allocator;
 
     const stack = try libcoro.stackAlloc(allocator, null);
     defer allocator.free(stack);
@@ -25,9 +26,13 @@ pub fn main() !void {
     const address = try net.Address.resolveIp("127.0.0.1", 8080);
     try stream_server.listen(address);
 
-    var frames = std.ArrayList(libcoro.FrameT(handler, .{})).init(allocator);
+    var frames = std.ArrayList(*Connection).init(allocator);
     while (true) {
         const conn = try stream_server.accept();
-        frames.append(try libcoro.xasync(handler, .{ allocator, conn.stream }, stack));
+        var conn_ptr = try allocator.create(Connection);
+        conn_ptr.* = .{
+            .frame = try libcoro.xasync(handler, .{ allocator, conn.stream }, stack),
+        };
+        try frames.append(conn_ptr);
     }
 }
